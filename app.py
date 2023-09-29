@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.openapi.docs import get_swagger_ui_html
 import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
@@ -10,7 +11,7 @@ import os
 from routers import router
 
 app = FastAPI(
-     default_response_class=ORJSONResponse,
+    default_response_class=ORJSONResponse,
 )
 
 app.add_middleware(
@@ -22,6 +23,15 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api")
+
+
+@app.get("/docs2", include_in_schema=False)
+async def get_documentation(request: Request):
+    return get_swagger_ui_html(
+        openapi_url=request.scope.get("root_path") + "/openapi.json",
+        title="Swagger",
+    )
+
 
 dotenv.load_dotenv()
 

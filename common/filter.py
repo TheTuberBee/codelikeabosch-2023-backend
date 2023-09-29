@@ -37,15 +37,14 @@ class KalmanFilter:
     ):
         """
         z: measurement vector
+
         H: measurement matrix 
             - translates state vector to a measurement vector
+
         R: measurement noise covariance matrix
             - high values mean confidence in prediction (infinity: measurement = prediction)
             - low values mean confidence in measurement (0: measurement = new state)
         """
-
-        if H is None:
-            H = np.eye(self.x.shape[0])
 
         if R is None:
             R = np.zeros((z.shape[0], z.shape[0]))

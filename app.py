@@ -7,11 +7,11 @@ from tortoise.contrib.fastapi import register_tortoise
 import dotenv
 import os
 
-api = FastAPI(
+app = FastAPI(
      default_response_class=ORJSONResponse,
 )
 
-api.add_middleware(
+app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
@@ -45,16 +45,16 @@ db_config: dict = {
 }
 
 register_tortoise(
-    app=api,
+    app=app,
     config=db_config,
     generate_schemas=True
 )
 
-api.include_router(router, prefix="/api")
+app.include_router(router, prefix="/api")
 
-@api.get("/")
+@app.get("/")
 def root():
     return "Hello World!"
 
 if __name__ == "__main__":
-    uvicorn.run(api, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

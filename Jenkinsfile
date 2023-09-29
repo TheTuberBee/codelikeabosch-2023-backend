@@ -4,6 +4,7 @@ pipeline {
         stage('Stop') {
             steps {
                 sh 'docker stop bosch_container || true'
+                sh 'docker rm -f bosch_container || true'
             }
         }
         stage('Build') {

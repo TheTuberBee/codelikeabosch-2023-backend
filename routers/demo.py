@@ -10,7 +10,7 @@ from models import Demo
 router = APIRouter()
 
 
-@router.post("/")
+@router.post("")
 async def upload_demo(
     ticks: Annotated[list[Tick], Depends(parse_dataset)],
     filename: Annotated[str, Depends(get_filename)],

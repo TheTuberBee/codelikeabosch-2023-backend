@@ -11,7 +11,7 @@ async def upload_file(
     file: UploadFile
 ) -> list[list[str]]:
     
-    if file.content_type != "text/csv":
+    if file.content_type != "text/csv" and file.content_type != "application/vnd.ms-excel":
         raise HTTPException(400, "File must be in CSV format.")
 
     file_contents = await file.read()

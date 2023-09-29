@@ -1,11 +1,13 @@
 from fastapi import FastAPI
 import uvicorn
-from routers import router
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 from tortoise.contrib.fastapi import register_tortoise
+
 import dotenv
 import os
+
+from routers import router
 
 app = FastAPI(
      default_response_class=ORJSONResponse,
@@ -18,6 +20,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+app.include_router(router, prefix="/api")
 
 dotenv.load_dotenv()
 
@@ -49,12 +53,6 @@ register_tortoise(
     config=db_config,
     generate_schemas=True
 )
-
-app.include_router(router, prefix="/api")
-
-@app.get("/")
-def root():
-    return "Hello World!"
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

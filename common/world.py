@@ -15,6 +15,8 @@ class RawObject(BaseModel):
 
 
 class Tick(BaseModel):
+    index: int
+    time: float
     host_yaw_rate: float
     host_speed: float
     objects: list[RawObject]
@@ -60,8 +62,11 @@ class HostMeasurement(BaseModel):
     
 
 class ObjectSnapshot(BaseModel):
+    type: ObjectType
     x: float
     y: float
+    vx: float
+    vy: float
     yaw: float
 
 
@@ -130,8 +135,11 @@ class Object:
         vy = self._state[3]
 
         return ObjectSnapshot(
+            type = self._type,
             x = self._state[0],
             y = self._state[1],
+            vx = vx,
+            vy = vy,
             yaw = math.atan2(vx, vy)
         )
 

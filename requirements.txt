@@ -1,7 +1,6 @@
 fastapi==0.103.1
 uvicorn[standard]==0.23.2
+numpy==1.26.0
 python_multipart==0.0.6
 tortoise-orm[asyncpg]==0.19.3
 orjson==3.9.2
-python-jose[cryptography]==3.3.0
-passlib[argon2]==1.7.4

@@ -54,16 +54,24 @@ async def parse_dataset(
             time = float(row[headers_dict["Timestamp"]]),
             host_yaw_rate = float(row[headers_dict["YawRate"]]),
             host_speed = float(row[headers_dict["VehicleSpeed"]]) / 256, # m/s
-            objects = [
-                RawObject(
-                    x_rel = float(row[headers_dict[distance_headers[i]["x"]]]) / 128, # m
-                    y_rel = float(row[headers_dict[distance_headers[i]["y"]]]) / 128, # m
-                    vx_rel = float(row[headers_dict[speed_headers[i]["x"]]]) / 256,   # m/s
-                    vy_rel = float(row[headers_dict[speed_headers[i]["y"]]]) / 256,   # m/s
-                )
-                if row[headers_dict[distance_headers[i]["x"]]] != 0 and row[headers_dict[distance_headers[i]["y"]]] != 0 else None
-                for i in range(4)
-            ]
+            objects = []
+            for i in range(4):
+                x = row[headers_dict[distance_headers[i]["x"]]]
+                y = row[headers_dict[distance_headers[i]["y"]]]
+                vx = row[headers_dict[speed_headers[i]["x"]]]
+                vy = row[headers_dict[speed_headers[i]["y"]]]
+                if x != 0 and y != 0:
+                    objects.append(
+                        RawObject(
+                            x_rel = float(x) / 128,    # m
+                            y_rel = float(y) / 128,    # m
+                            vx_rel = float(vx) / 256,  # m/s
+                            vy_rel = float(vy) / 256,  # m/s
+                        )
+                    )
+                else:
+                    objects.append(None)
+
         ))
     
     return out_ticks

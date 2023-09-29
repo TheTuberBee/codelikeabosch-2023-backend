@@ -6,7 +6,7 @@ from models import Playbook
 router = APIRouter()
 
 
-@router.get("/records")
+@router.get("/")
 async def get_records():
     try:
         records = await Playbook.all()

@@ -7,4 +7,4 @@ from . import records
 router = APIRouter()
 
 router.include_router(demo.router, prefix="/demo")
-router.include_router(records.router)
+router.include_router(records.router, prefix="/records")

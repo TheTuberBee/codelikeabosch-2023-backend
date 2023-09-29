@@ -32,28 +32,25 @@ class KalmanFilter:
     def measurement_update(
         self,
         z: np.ndarray,          # measurement vector - n(z) * 1
-        H: np.ndarray,   # measurement matrix - n(z) * n(x)
+        H: np.ndarray,          # measurement matrix - n(z) * n(x)
         R: np.ndarray = None,   # measurement noise covariance matrix - n(z) * n(z)
     ):
         """
         z: measurement vector
+
         H: measurement matrix 
             - translates state vector to a measurement vector
+
         R: measurement noise covariance matrix
             - high values mean confidence in prediction (infinity: measurement = prediction)
             - low values mean confidence in measurement (0: measurement = new state)
         """
-
-        if H is None:
-            H = np.eye(self.x.shape[0])
 
         if R is None:
             R = np.zeros((z.shape[0], z.shape[0]))
 
         # kalman gain - n(x) * n(z)
         K = self.P @ H.T @ np.linalg.inv(H @ self.P @ H.T + R)
-
-        print("kalman gain: \n", K)
 
         # state update
         self.x = self.x + K @ (z - H @ self.x)
@@ -63,55 +60,44 @@ class KalmanFilter:
 
 
     @classmethod
-    def const_acc_model_state_transition(
+    def const_vel_model_state_transition(
         cls,
         dt: float,  # time step
     ):
         """for objects on 2d plane"""
         return np.array([
-            [1.0, 0.0, dt, 0.0, 0.5 * dt**2, 0.0],
-            [0.0, 1.0, 0.0, dt, 0.0, 0.5 * dt**2],
-            [0.0, 0.0, 1.0, 0.0, dt, 0.0],
-            [0.0, 0.0, 0.0, 1.0, 0.0, dt],
-            [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+            [1.0, 0.0, dt, 0.0],
+            [0.0, 1.0, 0.0, dt],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
         ])
     
 
     @classmethod
-    def const_acc_model_init_state(cls):
+    def const_vel_model_init_state(cls):
         """for objects on 2d plane"""
         return np.array([
             [0.0], # x(m)
             [0.0], # y(m)
             [0.0], # vx(m/s)
             [0.0], # vy(m/s)
-            [0.0], # ax(m/s^2)
-            [0.0], # ay(m/s^2)
         ])
     
 
     @classmethod
-    def const_acc_model_init_covariance(cls):
+    def const_vel_model_init_covariance(cls):
         """for objects on 2d plane"""
-        return np.array([
-            [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
-        ])
+        return np.eye(4)
 
 
 if __name__ == "__main__":
     import time
 
-    hidden_state = KalmanFilter.const_acc_model_init_state()
+    hidden_state = KalmanFilter.const_vel_model_init_state()
     hidden_state[2] = 1
 
-    x0 = KalmanFilter.const_acc_model_init_state()
-    P0 = KalmanFilter.const_acc_model_init_covariance()
+    x0 = KalmanFilter.const_vel_model_init_state()
+    P0 = KalmanFilter.const_vel_model_init_covariance()
 
     filter = KalmanFilter(x0, P0)
 
@@ -122,7 +108,7 @@ if __name__ == "__main__":
 
         print(f"hidden state: \n{hidden_state}")
 
-        F = KalmanFilter.const_acc_model_state_transition(dt = 1)
+        F = KalmanFilter.const_vel_model_state_transition(dt = 1)
 
         print(f"state transition: \n{F}")
 

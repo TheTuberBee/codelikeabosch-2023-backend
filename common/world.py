@@ -4,14 +4,25 @@ from pydantic import BaseModel
 import numpy as np
 
 import enum
-from typing import Optional
+import math
+
+
+class RawObject(BaseModel):
+    x_rel: float
+    y_rel: float
+    vx_rel: float
+    vy_rel: float
+
+
+class Tick(BaseModel):
+    host_yaw_rate: float
+    host_speed: float
+    objects: list[RawObject]
 
 
 class ObjectType(enum.StrEnum):
-    unknown = "unknown"
     host = "host"
-    car = "car"
-    pedestrian = "pedestrian"
+    env = "env"
 
 
 class TrackingState(enum.StrEnum):
@@ -21,11 +32,43 @@ class TrackingState(enum.StrEnum):
 
 
 class Measurement(BaseModel):
-    # TODO: figure out what input fields do we have
+    x: float # m
+    y: float # m
+    vx: float # m/s
+    vy: float # m/s
 
     def vectorize(self) -> np.ndarray:
         # TODO: convert input into a vector
         return KalmanFilter.const_acc_model_init_state()
+    
+    def measurement_matrix(self) -> np.ndarray:
+        # TODO: should convert object state to measurement format
+        pass
+    
+
+class HostMeasurement(BaseModel):
+    vx: float # m/s
+    vy: float # m/s
+
+    def vectorize(self) -> np.ndarray:
+        # TODO: convert input into a vector
+        return KalmanFilter.const_acc_model_init_state()
+    
+    def measurement_matrix(self) -> np.ndarray:
+        # TODO: should convert object state to measurement format
+        pass
+    
+
+class ObjectSnapshot(BaseModel):
+    x: float
+    y: float
+    yaw: float
+
+
+class WorldSnapshot(BaseModel):
+    tick: int
+    time: float
+    objects: list[ObjectSnapshot]
 
 
 class Object:
@@ -35,7 +78,7 @@ class Object:
     def __init__(
         self,
         world: "World",
-        type: ObjectType = ObjectType.unknown,
+        type: ObjectType,
         update_count: int = 0,
         last_update: float = None,
     ):
@@ -75,20 +118,41 @@ class Object:
         z = measurement.vectorize()
 
         # TODO: calibrate measurement noise covariance (R)
+        # TODO: modify H according to the measurement format
         self._state.measurement_update(
             z = z,
             H = np.eye(z.shape[0])
         )
 
 
+    def snapshot(self):
+        vx = self._state[2]
+        vy = self._state[3]
+
+        return ObjectSnapshot(
+            x = self._state[0],
+            y = self._state[1],
+            yaw = math.atan2(vx, vy)
+        )
+
 
 class World:
     def __init__(self):
         self._objects: list[Object] = []
+        self._tick: int = 0
         self._time: float = 0
 
-    def update(self, dt: float):
-        self._time += dt
+
+    def tick(self, tick: Tick):
+        pass
+
+
+    def _snapshot(self):
+        return WorldSnapshot(
+            tick = self._tick,
+            time = self._time,
+            objects = [o.snapshot() for o in self._objects],
+        )
 
 
 if __name__ == "__main__":

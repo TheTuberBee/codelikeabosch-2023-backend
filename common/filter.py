@@ -32,7 +32,7 @@ class KalmanFilter:
     def measurement_update(
         self,
         z: np.ndarray,          # measurement vector - n(z) * 1
-        H: np.ndarray,   # measurement matrix - n(z) * n(x)
+        H: np.ndarray,          # measurement matrix - n(z) * n(x)
         R: np.ndarray = None,   # measurement noise covariance matrix - n(z) * n(z)
     ):
         """

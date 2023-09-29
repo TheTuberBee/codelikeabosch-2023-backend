@@ -103,7 +103,7 @@ class WorldSnapshot(BaseModel):
 
 class Object:
     UPDATE_CYCLES_THRESHOLD = 3
-    TIMEOUT_SECS = 0.4
+    TIMEOUT_SECS = 1.0
 
     def __init__(
         self,
@@ -222,7 +222,7 @@ class EnvObject(Object):
 
 
 class World:
-    ASSOCIATION_DISTANCE_THRESHOLD = 3 # m
+    ASSOCIATION_DISTANCE_THRESHOLD = 2.5 # m
 
     def __init__(self, tick: Tick):
         self._tick: int = tick.index
@@ -255,17 +255,39 @@ class World:
 
 
     def tick(self, tick: Tick):
-
-        # increment tick index
+        # incrementing tick index
         self._tick += 1
         assert tick.index == self._tick
 
-        # increment time
-        dt = tick.time - self._time
-        self._time = tick.time
+        # time update (state extrapolation)
+        self._time_update(tick.time)
 
-        # time update
-        
+        # measurement update (state correction)
+        self._measurement_update(tick)
+
+        # exporting tick data
+        return self.snapshot()
+
+
+    def snapshot(self):
+        objects = {}
+        for item in self._objects:
+            if item.get_tracking_state() == TrackingState.active:
+                objects[item.get_id()] = item.snapshot()
+
+        return WorldSnapshot(
+            tick = self._tick,
+            time = self._time,
+            host = self._host.snapshot(),
+            objects = objects,
+        )
+    
+
+    def _time_update(self, time):
+        # increment time
+        dt = time - self._time
+        self._time = time
+
         host_F = np.array([
             [1.0, 0.0, dt * math.cos(self._host.yaw()), 0.0, 0.0],
             [0.0, 1.0, dt * math.sin(self._host.yaw()), 0.0, 0.0],
@@ -279,6 +301,8 @@ class World:
         for o in self._objects:
             o.time_update(F)
 
+
+    def _measurement_update(self, tick: Tick):
         # host measurement update
         self._host.measurement_update(
             tick.get_host_measurement()
@@ -310,23 +334,6 @@ class World:
                 item.measurement_update(data)
             else:
                 self._add_object(data)
-
-        # exporting tick data
-        return self.snapshot()
-
-
-    def snapshot(self):
-        objects = {}
-        for item in self._objects:
-            if item.get_tracking_state() == TrackingState.active:
-                objects[item.get_id()] = item.snapshot()
-
-        return WorldSnapshot(
-            tick = self._tick,
-            time = self._time,
-            host = self._host.snapshot(),
-            objects = objects,
-        )
     
 
     def _add_object(self, measurement: Measurement):

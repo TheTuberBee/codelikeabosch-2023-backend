@@ -30,11 +30,13 @@ async def upload_demo(
     return snapshots
 
 
-@router.get("/")
-async def get_demo():
-    try:
-        records = await Demo.all().values("id", "name")
-        return records
+@router.get("")
+async def get_demos():
+    records = await Demo.all().values("id", "name")
+    return records
 
-    except Exception as e:
-        raise HTTPException(400, "Unable to retrieve records.")
+
+@router.get("/{demo_id}")
+async def get_demo(demo_id: int):
+    demo = await Demo.get(id=demo_id)
+    return demo.data

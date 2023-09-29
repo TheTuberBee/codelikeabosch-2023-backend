@@ -1,3 +1,3 @@
-from .playbook import (
-    Playbook,
+from .demo import (
+    Demo,
 )

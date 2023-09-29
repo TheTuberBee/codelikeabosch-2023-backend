@@ -62,7 +62,7 @@ class KalmanFilter:
 
 
     @classmethod
-    def const_acc_model_state_transition(
+    def const_vel_model_state_transition(
         cls,
         dt: float,  # time step
     ):
@@ -72,45 +72,34 @@ class KalmanFilter:
             [0.0, 1.0, 0.0, dt, 0.0, 0.5 * dt**2],
             [0.0, 0.0, 1.0, 0.0, dt, 0.0],
             [0.0, 0.0, 0.0, 1.0, 0.0, dt],
-            [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
         ])
     
 
     @classmethod
-    def const_acc_model_init_state(cls):
+    def const_vel_model_init_state(cls):
         """for objects on 2d plane"""
         return np.array([
             [0.0], # x(m)
             [0.0], # y(m)
             [0.0], # vx(m/s)
             [0.0], # vy(m/s)
-            [0.0], # ax(m/s^2)
-            [0.0], # ay(m/s^2)
         ])
     
 
     @classmethod
-    def const_acc_model_init_covariance(cls):
+    def const_vel_model_init_covariance(cls):
         """for objects on 2d plane"""
-        return np.array([
-            [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
-        ])
+        return np.eye(4)
 
 
 if __name__ == "__main__":
     import time
 
-    hidden_state = KalmanFilter.const_acc_model_init_state()
+    hidden_state = KalmanFilter.const_vel_model_init_state()
     hidden_state[2] = 1
 
-    x0 = KalmanFilter.const_acc_model_init_state()
-    P0 = KalmanFilter.const_acc_model_init_covariance()
+    x0 = KalmanFilter.const_vel_model_init_state()
+    P0 = KalmanFilter.const_vel_model_init_covariance()
 
     filter = KalmanFilter(x0, P0)
 
@@ -121,7 +110,7 @@ if __name__ == "__main__":
 
         print(f"hidden state: \n{hidden_state}")
 
-        F = KalmanFilter.const_acc_model_state_transition(dt = 1)
+        F = KalmanFilter.const_vel_model_state_transition(dt = 1)
 
         print(f"state transition: \n{F}")
 

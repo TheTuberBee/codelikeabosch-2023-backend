@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 from typing import Annotated
 
 from dependencies.file import parse_dataset, Tick
-from common.world import World, Object
+from common.world import World, Object, WorldSnapshot
 
 
 router = APIRouter()
@@ -15,6 +15,9 @@ async def upload_demo(
 ):
     world = World()
 
+    snapshots: list[WorldSnapshot] = []
     for tick in ticks:
-        world.tick(tick)
+        snapshot = world.tick(tick)
+        snapshots.append(snapshot)
 
+    return snapshots

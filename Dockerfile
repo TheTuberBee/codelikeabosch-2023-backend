@@ -1,4 +1,4 @@
-FROM python:3.11-alpine
+FROM python:3.11-bookworm
 
 # Keeps Python from generating .pyc files in the container
 ENV PYTHONDONTWRITEBYTECODE=1

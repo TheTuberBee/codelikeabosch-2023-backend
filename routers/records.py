@@ -1,15 +1,15 @@
 from fastapi import APIRouter, HTTPException
 
-from models import Playbook
+from models import Demo
 
 
 router = APIRouter()
 
 
-@router.get("/records")
+@router.get("/")
 async def get_records():
     try:
-        records = await Playbook.all()
+        records = await Demo.all()
         return records
 
     except Exception as e:

@@ -3,7 +3,7 @@ pipeline {
     stages {
         stage('Stop') {
             steps {
-                sh 'docker stop bosch || true'
+                sh 'docker stop $(docker ps -q --filter ancestor=bosch) || true'
             }
         }
         stage('Build') {

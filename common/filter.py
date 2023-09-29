@@ -15,18 +15,22 @@ class KalmanFilter:
 
     def time_update(
         self,
-        F: np.ndarray,  # state transition matrix - n(x) * n(x)
+        F: np.ndarray,         # state transition matrix - n(x) * n(x)
+        Q: np.ndarray = None,  # process noise covariance matrix - n(x) * n(x)
     ):
         """
         F: state transition matrix 
             - translates state vector to an estimated state vector
         """
 
+        if Q is None:
+            Q = np.zeros((F.shape[0], F.shape[0]))
+
         # state extrapolation
         self.x = F @ self.x
 
         # covariance extrapolation
-        self.P = F @ self.P @ F.T
+        self.P = F @ self.P @ F.T + Q
 
 
     def measurement_update(

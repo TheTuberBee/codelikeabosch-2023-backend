@@ -32,13 +32,16 @@ class Tick(BaseModel):
         result = []
         for item in self.objects:
             if item is None:
+                print("none")
                 continue
             data = Measurement(
                 x = item.x_rel + world._host.x(),
                 y = item.y_rel + world._host.y(),
                 vx = item.vx_rel + world._host.vx(),
                 vy = item.vy_rel + world._host.vy(),
-            ) 
+            )
+            if data.x == 0 or data.y == 0:
+                print(item)
             result.append(data)
         return result
 
@@ -95,7 +98,7 @@ class WorldSnapshot(BaseModel):
     tick: int
     time: float # s
     host: ObjectSnapshot
-    objects: list[ObjectSnapshot]
+    objects: dict[int, ObjectSnapshot]
 
 
 class Object:
@@ -111,6 +114,7 @@ class Object:
         self._type = type
         self._update_count = 0
         self._last_update = world.get_time()
+        self._id = world.next_id()
 
         if state is None:
             self._state = KalmanFilter(
@@ -135,7 +139,9 @@ class Object:
     
 
     def time_update(self, state_transition_matrix: np.ndarray):
-        self._state.time_update(state_transition_matrix)
+        # process noise covariance
+        Q = np.eye(state_transition_matrix.shape[0]) * 0.25 # fine tuning
+        self._state.time_update(state_transition_matrix, Q)
 
 
     def measurement_update(self, measurement):
@@ -168,6 +174,10 @@ class Object:
             v = self.v(),
             yaw = self.yaw(),
         )
+        
+
+    def get_id(self):
+        return self._id
     
 
     def __hash__(self):
@@ -217,6 +227,7 @@ class World:
     def __init__(self, tick: Tick):
         self._tick: int = tick.index
         self._time: float = tick.time
+        self._last_id = -1
 
         vx = tick.host_speed
 
@@ -254,8 +265,6 @@ class World:
         self._time = tick.time
 
         # time update
-
-        # state transition matrix
         
         host_F = np.array([
             [1.0, 0.0, dt * math.cos(self._host.yaw()), 0.0, 0.0],
@@ -307,10 +316,10 @@ class World:
 
 
     def snapshot(self):
-        objects = []
+        objects = {}
         for item in self._objects:
             if item.get_tracking_state() == TrackingState.active:
-                objects.append(item.snapshot())
+                objects[item.get_id()] = item.snapshot()
 
         return WorldSnapshot(
             tick = self._tick,
@@ -330,6 +339,10 @@ class World:
         )
         self._objects.append(o)
 
+
+    def next_id(self):
+        self._last_id += 1
+        return self._last_id
 
 
 if __name__ == "__main__":

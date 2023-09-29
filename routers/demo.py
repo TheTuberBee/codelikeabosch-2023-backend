@@ -9,7 +9,7 @@ from common.world import World, Object, WorldSnapshot
 router = APIRouter()
 
 
-@router.post("/")
+@router.post("")
 async def upload_demo(
     ticks: Annotated[list[Tick], Depends(parse_dataset)]
 ):

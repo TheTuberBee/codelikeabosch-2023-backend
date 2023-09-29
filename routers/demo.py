@@ -13,10 +13,10 @@ router = APIRouter()
 async def upload_demo(
     ticks: Annotated[list[Tick], Depends(parse_dataset)]
 ):
-    world = World()
+    world = World(ticks[0])
 
     snapshots: list[WorldSnapshot] = []
-    for tick in ticks:
+    for tick in ticks[1:]:
         snapshot = world.tick(tick)
         snapshots.append(snapshot)
 

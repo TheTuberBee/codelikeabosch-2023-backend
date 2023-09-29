@@ -20,7 +20,7 @@ class Tick(BaseModel):
     time: float
     host_yaw_rate: float
     host_speed: float
-    objects: list[RawObject]
+    objects: list[Optional[RawObject]]
 
     def get_host_measurement(self) -> "HostMeasurement":
         return HostMeasurement(
@@ -29,14 +29,18 @@ class Tick(BaseModel):
         )
 
     def get_measurements(self, world: "World") -> list["Measurement"]:
-        return [
-            Measurement(
+        result = []
+        for item in self.objects:
+            if item is None:
+                continue
+            data = Measurement(
                 x = item.x_rel + world._host.x(),
                 y = item.y_rel + world._host.y(),
                 vx = item.vx_rel + world._host.vx(),
                 vy = item.vy_rel + world._host.vy(),
             ) 
-        for item in self.objects]
+            result.append(data)
+        return result
 
 
 class TrackingState(enum.StrEnum):
@@ -58,7 +62,7 @@ class Measurement(BaseModel):
         return np.eye(4)
 
     def covariance_matrix(self) -> np.ndarray:
-        return np.eye(4)
+        return np.eye(4) * 0.25 # fine tuning
     
 
 class HostMeasurement(BaseModel):
@@ -75,7 +79,7 @@ class HostMeasurement(BaseModel):
         ])
     
     def covariance_matrix(self) -> np.ndarray:
-        return np.eye(6)
+        return np.eye(2) * 0.25 # fine tuning
     
 
 class ObjectSnapshot(BaseModel):
@@ -95,8 +99,8 @@ class WorldSnapshot(BaseModel):
 
 
 class Object:
-    UPDATE_CYCLES_THRESHOLD = 5
-    TIMEOUT_SECS = 3
+    UPDATE_CYCLES_THRESHOLD = 3
+    TIMEOUT_SECS = 0.4
 
     def __init__(
         self,
@@ -114,7 +118,10 @@ class Object:
                 P0 = KalmanFilter.const_vel_model_init_covariance(),
             )
         else:
-            self._state = state
+            self._state = KalmanFilter(
+                x0 = state,
+                P0 = np.eye(state.shape[0])
+            )
         
 
     def get_tracking_state(self):
@@ -146,10 +153,10 @@ class Object:
 
 
     def x(self):
-        return self._state[0]
+        return self._state.x[0]
     
     def y(self):
-        return self._state[1]
+        return self._state.x[1]
     
 
     def snapshot(self):
@@ -172,19 +179,19 @@ class HostObject(Object):
         super().__init__(*args, **kwargs)
     
     def vx(self):
-        return self.velocity() * math.cos(self.yaw)
+        return self.v() * math.cos(self.yaw())
     
     def vy(self):
-        return self.velocity() * math.sin(self.yaw)
+        return self.v() * math.sin(self.yaw())
 
-    def velocity(self):
-        return self._state[2]
+    def v(self):
+        return self._state.x[2]
 
     def yaw(self):
-        return self._state[3]
+        return self._state.x[3]
     
     def yaw_rate(self):
-        return self._state[4]
+        return self._state.x[4]
     
 
 class EnvObject(Object):
@@ -192,12 +199,12 @@ class EnvObject(Object):
         super().__init__(*args, **kwargs)
 
     def vx(self):
-        return self._state[2]
+        return self._state.x[2]
     
     def vy(self):
-        return self._state[3]
+        return self._state.x[3]
     
-    def velocity(self):
+    def v(self):
         return math.sqrt(self.vx() ** 2 + self.vy() ** 2)
     
     def yaw(self):
@@ -205,6 +212,8 @@ class EnvObject(Object):
 
 
 class World:
+    ASSOCIATION_DISTANCE_THRESHOLD = 3 # m
+
     def __init__(self, tick: Tick):
         self._tick: int = tick.index
         self._time: float = tick.time
@@ -217,7 +226,7 @@ class World:
             state = np.array([
                 [0.0], # x
                 [0.0], # y
-                [0.0], # v
+                [vx],  # v
                 [0.0], # yaw
                 [0.0], # yaw rate
             ]),
@@ -225,21 +234,9 @@ class World:
 
         self._objects: list[Optional[EnvObject]] = []
 
-        for i in range(4):
-            raw = tick.objects[i]
-            if raw is None:
-                o = None
-            else:
-                o = EnvObject(
-                    world = self,
-                    state = np.array([
-                        [raw.x_rel],
-                        [raw.y_rel],
-                        [raw.vx_rel + vx],
-                        [raw.vy_rel],
-                    ]),
-                )
-            self._objects.append(o)
+        measurements = tick.get_measurements(self)
+        for data in measurements:
+            self._add_object(data)
 
 
     def get_time(self):
@@ -261,8 +258,8 @@ class World:
         # state transition matrix
         
         host_F = np.array([
-            [1.0, 0.0, dt * math.cos(self._host.yaw), 0.0, 0.0],
-            [0.0, 1.0, dt * math.sin(self._host.yaw), 0.0, 0.0],
+            [1.0, 0.0, dt * math.cos(self._host.yaw()), 0.0, 0.0],
+            [0.0, 1.0, dt * math.sin(self._host.yaw()), 0.0, 0.0],
             [0.0, 0.0, 1.0, 0.0, 0.0],
             [0.0, 0.0, 0.0, 1.0, dt],
             [0.0, 0.0, 0.0, 0.0, 1.0],
@@ -278,29 +275,61 @@ class World:
             tick.get_host_measurement()
         )
 
-        # object-measurement association and update
+        # measurement association and update
         object_set = set(self._objects)
-        for data in tick.get_measurements():
+        for data in tick.get_measurements(self):
             data: Measurement
-            # smallest distance
-            def key(o: Object):
-                return math.sqrt(
-                    (o._state[0] - data.x) ** 2 + (o._state[1] - data.y) ** 2
+
+            # based on smallest distance
+            def key(item: EnvObject):
+                state = item.get_tracking_state()
+                if state == TrackingState.lost:
+                    return math.inf
+                
+                distance = math.sqrt(
+                    (item.x() - data.x) ** 2 + (item.y() - data.y) ** 2
                 )
-            o: Object = min(object_set, key = key)
-            o.measurement_update(data)
+                item.distance = distance
+
+                if state == TrackingState.candidate:
+                    return distance * 2 # penalty
+                return distance
+            
+            item: EnvObject = min(object_set, key = key)
+
+            if item.distance <= World.ASSOCIATION_DISTANCE_THRESHOLD:
+                item.measurement_update(data)
+            else:
+                self._add_object(data)
 
         # exporting tick data
         return self.snapshot()
 
 
     def snapshot(self):
+        objects = []
+        for item in self._objects:
+            if item.get_tracking_state() == TrackingState.active:
+                objects.append(item.snapshot())
+
         return WorldSnapshot(
             tick = self._tick,
             time = self._time,
             host = self._host.snapshot(),
-            objects = [o.snapshot() for o in self._objects],
+            objects = objects,
         )
+    
+
+    def _add_object(self, measurement: Measurement):
+        o = EnvObject(
+            world = self,
+            # for env objects the measurement and the 
+            # state vectors have the same format,
+            # therefore they can be used for initialization
+            state = measurement.vectorize()
+        )
+        self._objects.append(o)
+
 
 
 if __name__ == "__main__":

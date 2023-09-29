@@ -52,8 +52,6 @@ class KalmanFilter:
         # kalman gain - n(x) * n(z)
         K = self.P @ H.T @ np.linalg.inv(H @ self.P @ H.T + R)
 
-        print("kalman gain: \n", K)
-
         # state update
         self.x = self.x + K @ (z - H @ self.x)
 
@@ -68,10 +66,10 @@ class KalmanFilter:
     ):
         """for objects on 2d plane"""
         return np.array([
-            [1.0, 0.0, dt, 0.0, 0.5 * dt**2, 0.0],
-            [0.0, 1.0, 0.0, dt, 0.0, 0.5 * dt**2],
-            [0.0, 0.0, 1.0, 0.0, dt, 0.0],
-            [0.0, 0.0, 0.0, 1.0, 0.0, dt],
+            [1.0, 0.0, dt, 0.0],
+            [0.0, 1.0, 0.0, dt],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
         ])
     
 

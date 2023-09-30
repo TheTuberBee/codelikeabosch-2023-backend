@@ -20,10 +20,11 @@ async def upload_demo(
     for tick in ticks[1:]:
         world.tick(tick)
 
-    await Demo.create(
+    demo = await Demo.create(
         name=filename + "_" + str(int(time())),
         data=[snapshot.dict() for snapshot in world.get_snapshots()]
     )
+    print(f"demo uploaded as {demo.name}")
 
     return world.get_snapshots()
 

@@ -32,16 +32,14 @@ class Tick(BaseModel):
         result = []
         for item in self.objects:
             if item is None:
-                print("none")
                 continue
+            yaw = world._host.yaw()
             data = Measurement(
-                x = item.x_rel + world._host.x(),
-                y = item.y_rel + world._host.y(),
-                vx = item.vx_rel + world._host.vx(),
-                vy = item.vy_rel + world._host.vy(),
+                x = item.x_rel * math.cos(yaw) - item.y_rel * math.sin(yaw) + world._host.x(),
+                y = item.x_rel * math.sin(yaw) + item.y_rel * math.cos(yaw) + world._host.y(),
+                vx = item.vx_rel * math.cos(yaw) - item.vy_rel * math.sin(yaw) + world._host.vx(),
+                vy = item.vx_rel * math.sin(yaw) + item.vy_rel * math.cos(yaw) + world._host.vy(),
             )
-            if data.x == 0 or data.y == 0:
-                print(item)
             result.append(data)
         return result
 
@@ -149,7 +147,6 @@ class Object:
     def measurement_update(self, measurement):
         z = measurement.vectorize()
 
-        # TODO: calibrate measurement noise covariance (R)
         self._state.measurement_update(
             z = z,
             H = measurement.measurement_matrix(),

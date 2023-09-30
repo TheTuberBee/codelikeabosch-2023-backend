@@ -173,6 +173,7 @@ class Object:
 
         # signifies if an event has already been generated
         self._collision_possible = False
+        self._braking_distance = False
         self._collision_happened = False
 
         # Kalman filter state initialization
@@ -270,6 +271,10 @@ class HostObject(Object):
     def yaw_rate(self):
         return self._state.x[4]
     
+    def get_break_distance(self):
+        # simplified model, should be revisited later
+        return 0.5 * self.v() ** 2
+    
 
 class EnvObject(Object):
     def __init__(self, *args, **kwargs):
@@ -302,6 +307,11 @@ class World:
     # in the event of a collision, in order to classify it,
     # we consider the movement in at most this many of the last ticks
     COLLISION_BACKTRACK_TICKS = 20
+
+    # if an object is within this many times the braking distance
+    # of the host, we mark it as a potential collision
+    BRAKE_DISTANCE_MULTIPLIER = 1.5
+
 
     def __init__(self, tick: Tick):
         # snapshots from every tick
@@ -452,12 +462,32 @@ class World:
             ])
 
             distance = np.linalg.norm(front_pos - obj_pos)
+            
+            delta = obj_pos - front_pos
+
+            # rotate delta by -yaw
+            delta = np.array([
+                [delta[0][0] * math.cos(-self._host.yaw()) - delta[1][0] * math.sin(-self._host.yaw())],
+                [delta[0][0] * math.sin(-self._host.yaw()) + delta[1][0] * math.cos(-self._host.yaw())],
+            ])
+
+            CAR_SAFETY_WIDTH = 4.8 # m
 
             # if requirements are met, we mark the object 
             # as collider and classify the collision
             if distance <= World.COLLISION_THRESHOLD and not obj._collision_happened:
                 obj.mark_as_collider()
                 self._classify_collision(obj, events)
+
+            # object is in front of host, within braking distance
+            elif (delta[0][0] > 0 and abs(delta[1][0]) < CAR_SAFETY_WIDTH / 2 and 
+                distance <= self._host.get_break_distance() * World.BRAKE_DISTANCE_MULTIPLIER 
+                and not obj._braking_distance):
+
+                obj._braking_distance = True
+                events.append(
+                    f"Object #{obj.get_id()} is nearing braking distance"
+                )
 
 
     # determines the type of collision based on the 
@@ -535,13 +565,13 @@ class World:
 
             #intersection = np.array(intersection).reshape((2, 1))
 
-            if (time_host < 6 and time_obj < 6 and 
+            if (time_host < 4.5 and time_obj < 5 and 
                 not obj._collision_possible and not obj._collision_happened):
 
                 obj._collision_possible = True
                 obj._color = Object.CANDIDATE_COLOR
                 events.append(
-                    f"Possible collision with object #{obj.get_id()}"
+                    f"Path of object #{obj.get_id()} and host crosses, collision possible"
                 )
 
 

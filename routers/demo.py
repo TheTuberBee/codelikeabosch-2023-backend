@@ -17,17 +17,15 @@ async def upload_demo(
 ):
     world = World(ticks[0])
 
-    snapshots: list[WorldSnapshot] = []
     for tick in ticks[1:]:
-        snapshot = world.tick(tick)
-        snapshots.append(snapshot)
+        world.tick(tick)
 
     await Demo.create(
         name=filename + "_" + str(int(time())),
-        data=[snapshot.dict() for snapshot in snapshots]
+        data=[snapshot.dict() for snapshot in world.get_snapshots()]
     )
 
-    return snapshots
+    return world.get_snapshots()
 
 
 @router.get("")

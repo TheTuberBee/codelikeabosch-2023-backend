@@ -100,10 +100,6 @@ class HostMeasurement(BaseModel):
         return np.eye(2) * 0.25 # fine tuning
     
 
-# constant attributes of an object
-class ObjectMeta(BaseModel):
-    color: str
-
 # time dependent attributes of an object
 class ObjectSnapshot(BaseModel):
     x: float # m
@@ -112,6 +108,7 @@ class ObjectSnapshot(BaseModel):
     vy: float # m/s
     v: float # m/s
     yaw: float # radian
+    color: str # hex
 
 # time dependent attributes of the world,
 # objects are identified by string ids
@@ -124,7 +121,6 @@ class WorldSnapshot(BaseModel):
 
 # output of the whole process
 class Output(BaseModel):
-    object_meta: dict[str, ObjectMeta]
     snapshots: list[WorldSnapshot]
 
 
@@ -151,6 +147,7 @@ class Object:
 
     # shown on the frontend
     DEFAULT_COLOR = "#AAAA00"
+    CANDIDATE_COLOR = "#00AAAA"
     COLLIDER_COLOR = "#CC00CC"
 
     def __init__(
@@ -173,6 +170,10 @@ class Object:
 
         # first appearance
         self._first_tick: int = world._tick
+
+        # signifies if an event has already been generated
+        self._collision_possible = False
+        self._collision_happened = False
 
         # Kalman filter state initialization
         if state is None:
@@ -200,6 +201,7 @@ class Object:
         return self._first_tick
     
     def mark_as_collider(self):
+        self._collision_happened = True
         self._color = Object.COLLIDER_COLOR
 
     def __hash__(self):
@@ -235,12 +237,6 @@ class Object:
 
         self._update_count += 1
         self._last_update = self._world.get_time()
-    
-
-    def get_object_meta(self):
-        return ObjectMeta(
-            color = self._color
-        )
 
 
     def snapshot(self):
@@ -251,6 +247,7 @@ class Object:
             vy = self.vy(),
             v = self.v(),
             yaw = self.yaw(),
+            color = self._color,
         )
     
 
@@ -317,6 +314,7 @@ class World:
         self._last_id = -1
 
         vx = tick.host_speed
+        yaw_rate = tick.host_yaw_rate
 
         # host object initialization
         self._host = HostObject(
@@ -327,7 +325,7 @@ class World:
                 [0.0], # y
                 [vx],  # v
                 [0.0], # yaw
-                [0.0], # yaw rate
+                [yaw_rate], # yaw rate
             ]),
         )
 
@@ -354,7 +352,7 @@ class World:
         self._measurement_update(tick)
 
         # exporting tick data
-        snapshot = self.snapshot(events)
+        snapshot = self.snapshot()
         self._snapshots.append(snapshot)
 
         self._detect_collisions(events) # 2nd task
@@ -363,6 +361,8 @@ class World:
         # debug
         if len(events) > 0:
             print(self._tick, events)
+
+        snapshot.events = events
 
 
     # Kalman filter state extrapolation
@@ -455,7 +455,7 @@ class World:
 
             # if requirements are met, we mark the object 
             # as collider and classify the collision
-            if distance <= World.COLLISION_THRESHOLD and obj._color != Object.COLLIDER_COLOR:
+            if distance <= World.COLLISION_THRESHOLD and not obj._collision_happened:
                 obj.mark_as_collider()
                 self._classify_collision(obj, events)
 
@@ -515,21 +515,15 @@ class World:
 
 
     def _predict_collisions(self, events: list[str]):
-        """host_pos = np.array([
-            [self._host.x()],
-            [self._host.y()],
-        ])
+        host_pos = np.array([self._host.x(), self._host.y()])
 
         for obj in self._objects:
             if obj.get_tracking_state() != TrackingState.active:
                 continue
 
-            obj_pos = np.array([
-                [obj.x()], 
-                [obj.y()],
-            ])
+            obj_pos = np.array([obj.x(), obj.y()])
 
-            intersection, obj_time, host_time = calculate_intersection(
+            intersection, time_obj, time_host = calculate_intersection(
                 car_position = host_pos,
                 car_angle = self._host.yaw(),
                 car_velocity = self._host.v(),
@@ -537,7 +531,18 @@ class World:
                 pedestrian_position = obj_pos,
                 pedestrian_angle = obj.yaw(),
                 pedestrian_velocity = obj.v(),
-            )"""
+            )
+
+            #intersection = np.array(intersection).reshape((2, 1))
+
+            if (time_host < 6 and time_obj < 6 and 
+                not obj._collision_possible and not obj._collision_happened):
+
+                obj._collision_possible = True
+                obj._color = Object.CANDIDATE_COLOR
+                events.append(
+                    f"Possible collision with object #{obj.get_id()}"
+                )
 
 
     def get_time(self):
@@ -545,12 +550,6 @@ class World:
     
     def get_snapshots(self):
         return self._snapshots
-
-    def get_object_meta(self):
-        result = {}
-        for item in self._objects:
-            result[str(item.get_id())] = item.get_object_meta()
-        return result
     
     def next_id(self):
         self._last_id += 1

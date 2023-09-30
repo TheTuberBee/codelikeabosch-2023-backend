@@ -25,7 +25,6 @@ async def upload_demo(
         world.tick(tick)
 
     result = Output(
-        object_meta=world.get_object_meta(),
         snapshots=world.get_snapshots()
     )
 

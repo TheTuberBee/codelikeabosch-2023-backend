@@ -8,22 +8,15 @@ import math
 from typing import Optional
 
 
-class ObjectMeta(BaseModel):
-    color: str = "#"
-
-
-class Output(BaseModel):
-    object_meta: dict[str, ObjectMeta]
-    snapshots: list["WorldSnapshot"]
-
-
+# normalised but relative data from the dataset
 class RawObject(BaseModel):
-    x_rel: float
-    y_rel: float
-    vx_rel: float
-    vy_rel: float
+    x_rel: float # m
+    y_rel: float # m
+    vx_rel: float # m/s
+    vy_rel: float # m/s
 
 
+# one row of the dataset
 class Tick(BaseModel):
     index: int
     time: float
@@ -31,18 +24,21 @@ class Tick(BaseModel):
     host_speed: float
     objects: list[Optional[RawObject]]
 
+    # transforms tick data to a measurement for the host object
     def get_host_measurement(self) -> "HostMeasurement":
         return HostMeasurement(
             speed = self.host_speed,
             yaw_rate = self.host_yaw_rate,
         )
 
+    # transforms tick data to a list of measurements for the environmental objects
     def get_measurements(self, world: "World") -> list["Measurement"]:
         result = []
         for item in self.objects:
             if item is None:
                 continue
             yaw = world._host.yaw()
+            # transforming relative coordinates to world coordinates
             data = Measurement(
                 x = item.x_rel * math.cos(yaw) - item.y_rel * math.sin(yaw) + world._host.x(),
                 y = item.x_rel * math.sin(yaw) + item.y_rel * math.cos(yaw) + world._host.y(),
@@ -53,45 +49,52 @@ class Tick(BaseModel):
         return result
 
 
-class TrackingState(enum.StrEnum):
-    candidate = "candidate"
-    active = "active"
-    lost = "lost"
-
-
+# measurement for an enviromental object
 class Measurement(BaseModel):
     x: float # m
     y: float # m
     vx: float # m/s
     vy: float # m/s
 
+    # Kalman filter state vector
     def vectorize(self) -> np.ndarray:
         return np.array([[self.x], [self.y], [self.vx], [self.vy]])
     
+    # Kalman filter measurement matrix
     def measurement_matrix(self) -> np.ndarray:
         return np.eye(4)
 
+    # Kalman filter measurement covariance matrix
     def covariance_matrix(self) -> np.ndarray:
         return np.eye(4) * 0.25 # fine tuning
     
 
+# measurement for the host object
 class HostMeasurement(BaseModel):
     speed: float # m/s
     yaw_rate: float # radian/s
 
+    # Kalman filter state vector
     def vectorize(self) -> np.ndarray:
         return np.array([[self.speed], [self.yaw_rate]])
     
+    # Kalman filter measurement matrix
     def measurement_matrix(self) -> np.ndarray:
         return np.array([
             [0.0, 0.0, 1.0, 0.0, 0.0],
             [0.0, 0.0, 0.0, 0.0, 1.0],
         ])
     
+    # Kalman filter measurement covariance matrix
     def covariance_matrix(self) -> np.ndarray:
         return np.eye(2) * 0.25 # fine tuning
     
 
+# constant attributes of an object
+class ObjectMeta(BaseModel):
+    color: str
+
+# time dependent attributes of an object
 class ObjectSnapshot(BaseModel):
     x: float # m
     y: float # m
@@ -100,7 +103,8 @@ class ObjectSnapshot(BaseModel):
     v: float # m/s
     yaw: float # radian
 
-
+# time dependent attributes of the world,
+# objects are identified by string ids
 class WorldSnapshot(BaseModel):
     tick: int
     time: float # s
@@ -108,11 +112,34 @@ class WorldSnapshot(BaseModel):
     objects: dict[str, ObjectSnapshot]
     events: list[str]
 
+# output of the whole process
+class Output(BaseModel):
+    object_meta: dict[str, ObjectMeta]
+    snapshots: list[WorldSnapshot]
 
+
+# stages of the lifecycle of an object
+class TrackingState(enum.StrEnum):
+    # not yet shown, can recieve updates
+    candidate = "candidate"
+    # shown on frontend, prioritized for updates
+    active = "active" 
+    # not shown, cannot recieve updates anymore
+    lost = "lost" 
+
+
+# base class for the enviromental objects 
+# and the host object ("ego vehicle"),
+# encapsulates a Kalman filter
 class Object:
+    # number of updates to wait before an object 
+    # is considered actively tracked
     UPDATE_TICKS_THRESHOLD = 3
+    # number of seconds to wait before an object
+    # is considered lost
     TIMEOUT_SECS = 1.0
 
+    # shown on the frontend
     DEFAULT_COLOR = "#AAAA00"
     COLLIDER_COLOR = "#CC00CC"
 
@@ -121,13 +148,23 @@ class Object:
         world: "World",
         state: np.ndarray = None
     ):
+        # reference to owner world
         self._world = world
+
+        # color of the object on the frontend
         self._color = Object.DEFAULT_COLOR
+
+        # lifecycle attributes
         self._update_count = 0
-        self._last_update = world.get_time()
-        self._id = world.next_id()
+        self._last_update = world.get_time() # s
+
+        # unique id
+        self._id: str = world.next_id()
+
+        # first appearance
         self._first_tick: int = world._tick
 
+        # Kalman filter state initialization
         if state is None:
             self._state = KalmanFilter(
                 x0 = KalmanFilter.const_vel_model_init_state(),
@@ -138,6 +175,22 @@ class Object:
                 x0 = state,
                 P0 = np.eye(state.shape[0])
             )
+
+
+    def x(self):
+        return self._state.x[0]
+    
+    def y(self):
+        return self._state.x[1]
+    
+    def get_id(self):
+        return self._id
+    
+    def get_first_tick(self):
+        return self._first_tick
+    
+    def mark_as_collider(self):
+        self._color = Object.COLLIDER_COLOR
         
 
     def get_tracking_state(self):
@@ -150,12 +203,14 @@ class Object:
         return TrackingState.active
     
 
+    # Kalman filter state extrapolation
     def time_update(self, state_transition_matrix: np.ndarray):
         # process noise covariance
         Q = np.eye(state_transition_matrix.shape[0]) * 0.25 # fine tuning
         self._state.time_update(state_transition_matrix, Q)
 
 
+    # Kalman filter state correction
     def measurement_update(self, measurement):
         z = measurement.vectorize()
 
@@ -167,13 +222,6 @@ class Object:
 
         self._update_count += 1
         self._last_update = self._world.get_time()
-
-
-    def x(self):
-        return self._state.x[0]
-    
-    def y(self):
-        return self._state.x[1]
     
 
     def get_object_meta(self):
@@ -192,15 +240,6 @@ class Object:
             yaw = self.yaw(),
         )
         
-
-    def get_id(self):
-        return self._id
-    
-    def get_first_tick(self):
-        return self._first_tick
-    
-    def mark_as_collider(self):
-        self._color = Object.COLLIDER_COLOR
     
     def __hash__(self):
         return id(self)
@@ -303,6 +342,8 @@ class World:
 
         self._detect_collisions(events)
 
+
+
         if len(events) > 0:
             print(self._tick, events)
 
@@ -395,7 +436,7 @@ class World:
 
     def next_id(self):
         self._last_id += 1
-        return self._last_id
+        return str(self._last_id)
     
 
     def _detect_collisions(self, events: list[str]):

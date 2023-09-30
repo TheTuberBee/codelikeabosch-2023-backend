@@ -8,6 +8,15 @@ import math
 from typing import Optional
 
 
+class ObjectMeta(BaseModel):
+    color: str = "#"
+
+
+class Output(BaseModel):
+    object_meta: dict[str, ObjectMeta]
+    snapshots: list["WorldSnapshot"]
+
+
 class RawObject(BaseModel):
     x_rel: float
     y_rel: float
@@ -104,13 +113,16 @@ class Object:
     UPDATE_TICKS_THRESHOLD = 3
     TIMEOUT_SECS = 1.0
 
+    DEFAULT_COLOR = "#AAAA00"
+    COLLIDER_COLOR = "#CC00CC"
+
     def __init__(
         self,
         world: "World",
         state: np.ndarray = None
     ):
         self._world = world
-        self._type = type
+        self._color = Object.DEFAULT_COLOR
         self._update_count = 0
         self._last_update = world.get_time()
         self._id = world.next_id()
@@ -164,6 +176,12 @@ class Object:
         return self._state.x[1]
     
 
+    def get_object_meta(self):
+        return ObjectMeta(
+            color = self._color
+        )
+
+
     def snapshot(self):
         return ObjectSnapshot(
             x = self.x(),
@@ -178,11 +196,12 @@ class Object:
     def get_id(self):
         return self._id
     
-
     def get_first_tick(self):
         return self._first_tick
     
-
+    def mark_as_collider(self):
+        self._color = Object.COLLIDER_COLOR
+    
     def __hash__(self):
         return id(self)
     
@@ -284,6 +303,13 @@ class World:
         self._detect_collisions(events)
 
         print(events)
+
+
+    def get_object_meta(self):
+        result = {}
+        for item in self._objects:
+            result[str(item.get_id())] = item.get_object_meta()
+        return result
 
 
     def snapshot(self, events: list[str] = []):
@@ -390,6 +416,7 @@ class World:
             distance = np.linalg.norm(front_pos - obj_pos)
 
             if distance <= World.COLLISION_THRESHOLD:
+                obj.mark_as_collider()
                 self._classify_collision(obj, events)
 
 

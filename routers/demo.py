@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Annotated
 
 from dependencies.file import parse_dataset, get_filename
-from common.world import World, WorldSnapshot, Tick
+from common.world import World, WorldSnapshot, Tick, Output
 from time import time
 from models import Demo
 
@@ -17,17 +17,21 @@ async def upload_demo(
 ):
     world = World(ticks[0])
 
-    snapshots: list[WorldSnapshot] = []
     for tick in ticks[1:]:
-        snapshot = world.tick(tick)
-        snapshots.append(snapshot)
+        world.tick(tick)
 
-    await Demo.create(
-        name=filename + "_" + str(int(time())),
-        data=[snapshot.dict() for snapshot in snapshots]
+    result = Output(
+        object_meta=world.get_object_meta(),
+        snapshots=world.get_snapshots()
     )
 
-    return snapshots
+    demo = await Demo.create(
+        name=filename + "_" + str(int(time())),
+        data=result.dict()
+    )
+    print(f"demo uploaded as {demo.name}")
+
+    return result
 
 
 @router.get("")

@@ -8,6 +8,15 @@ import math
 from typing import Optional
 
 
+class ObjectMeta(BaseModel):
+    color: str = "#"
+
+
+class Output(BaseModel):
+    object_meta: dict[str, ObjectMeta]
+    snapshots: list["WorldSnapshot"]
+
+
 class RawObject(BaseModel):
     x_rel: float
     y_rel: float
@@ -32,16 +41,14 @@ class Tick(BaseModel):
         result = []
         for item in self.objects:
             if item is None:
-                print("none")
                 continue
+            yaw = world._host.yaw()
             data = Measurement(
-                x = item.x_rel + world._host.x(),
-                y = item.y_rel + world._host.y(),
-                vx = item.vx_rel + world._host.vx(),
-                vy = item.vy_rel + world._host.vy(),
+                x = item.x_rel * math.cos(yaw) - item.y_rel * math.sin(yaw) + world._host.x(),
+                y = item.x_rel * math.sin(yaw) + item.y_rel * math.cos(yaw) + world._host.y(),
+                vx = item.vx_rel * math.cos(yaw) - item.vy_rel * math.sin(yaw) + world._host.vx(),
+                vy = item.vx_rel * math.sin(yaw) + item.vy_rel * math.cos(yaw) + world._host.vy(),
             )
-            if data.x == 0 or data.y == 0:
-                print(item)
             result.append(data)
         return result
 
@@ -98,12 +105,16 @@ class WorldSnapshot(BaseModel):
     tick: int
     time: float # s
     host: ObjectSnapshot
-    objects: dict[int, ObjectSnapshot]
+    objects: dict[str, ObjectSnapshot]
+    events: list[str]
 
 
 class Object:
-    UPDATE_CYCLES_THRESHOLD = 3
+    UPDATE_TICKS_THRESHOLD = 3
     TIMEOUT_SECS = 1.0
+
+    DEFAULT_COLOR = "#AAAA00"
+    COLLIDER_COLOR = "#CC00CC"
 
     def __init__(
         self,
@@ -111,10 +122,11 @@ class Object:
         state: np.ndarray = None
     ):
         self._world = world
-        self._type = type
+        self._color = Object.DEFAULT_COLOR
         self._update_count = 0
         self._last_update = world.get_time()
         self._id = world.next_id()
+        self._first_tick: int = world._tick
 
         if state is None:
             self._state = KalmanFilter(
@@ -132,7 +144,7 @@ class Object:
         if self._world.get_time() - self._last_update > Object.TIMEOUT_SECS:
             return TrackingState.lost
         
-        if self._update_count < Object.UPDATE_CYCLES_THRESHOLD:
+        if self._update_count < Object.UPDATE_TICKS_THRESHOLD:
             return TrackingState.candidate
         
         return TrackingState.active
@@ -147,7 +159,6 @@ class Object:
     def measurement_update(self, measurement):
         z = measurement.vectorize()
 
-        # TODO: calibrate measurement noise covariance (R)
         self._state.measurement_update(
             z = z,
             H = measurement.measurement_matrix(),
@@ -165,6 +176,12 @@ class Object:
         return self._state.x[1]
     
 
+    def get_object_meta(self):
+        return ObjectMeta(
+            color = self._color
+        )
+
+
     def snapshot(self):
         return ObjectSnapshot(
             x = self.x(),
@@ -179,7 +196,12 @@ class Object:
     def get_id(self):
         return self._id
     
-
+    def get_first_tick(self):
+        return self._first_tick
+    
+    def mark_as_collider(self):
+        self._color = Object.COLLIDER_COLOR
+    
     def __hash__(self):
         return id(self)
     
@@ -223,8 +245,11 @@ class EnvObject(Object):
 
 class World:
     ASSOCIATION_DISTANCE_THRESHOLD = 2.5 # m
+    COLLISION_THRESHOLD = 0.8 # m from midpoint of frontal structure
+    COLLISION_BACKTRACK_TICKS = 20
 
     def __init__(self, tick: Tick):
+        self._snapshots: list[WorldSnapshot] = []
         self._tick: int = tick.index
         self._time: float = tick.time
         self._last_id = -1
@@ -252,9 +277,15 @@ class World:
 
     def get_time(self):
         return self._time
+    
+
+    def get_snapshots(self):
+        return self._snapshots
 
 
     def tick(self, tick: Tick):
+        events: list[str] = []
+
         # incrementing tick index
         self._tick += 1
         assert tick.index == self._tick
@@ -266,20 +297,33 @@ class World:
         self._measurement_update(tick)
 
         # exporting tick data
-        return self.snapshot()
+        snapshot = self.snapshot(events)
+        self._snapshots.append(snapshot)
+
+        self._detect_collisions(events)
+
+        print(events)
 
 
-    def snapshot(self):
+    def get_object_meta(self):
+        result = {}
+        for item in self._objects:
+            result[str(item.get_id())] = item.get_object_meta()
+        return result
+
+
+    def snapshot(self, events: list[str] = []):
         objects = {}
         for item in self._objects:
             if item.get_tracking_state() == TrackingState.active:
-                objects[item.get_id()] = item.snapshot()
-
+                objects[str(item.get_id())] = item.snapshot()
+        
         return WorldSnapshot(
             tick = self._tick,
             time = self._time,
             host = self._host.snapshot(),
             objects = objects,
+            events = events,
         )
     
 
@@ -350,6 +394,76 @@ class World:
     def next_id(self):
         self._last_id += 1
         return self._last_id
+    
+
+    def _detect_collisions(self, events: list[str]):
+        # estimating position of 50% width at frontal structure of host
+        front_pos = np.array([
+            [self._host.x() + 2 * math.cos(self._host.yaw())], 
+            [self._host.y() + 2 * math.sin(self._host.yaw())]
+        ])
+
+        for obj in self._objects:
+            if obj.get_tracking_state() != TrackingState.active:
+                continue
+
+            obj_pos = np.array([
+                [obj.x()], 
+                [obj.y()],
+            ])
+
+            # calculating distance between host and object
+            distance = np.linalg.norm(front_pos - obj_pos)
+
+            if distance <= World.COLLISION_THRESHOLD:
+                obj.mark_as_collider()
+                self._classify_collision(obj, events)
+
+
+    def _classify_collision(self, obj: EnvObject, events: list[str]):
+        # backtracking host and object displacement for max 10 ticks
+        first_tick_index = max(
+            obj.get_first_tick(), 
+            self._tick - World.COLLISION_BACKTRACK_TICKS
+        )
+
+        first_tick = self._snapshots[first_tick_index]
+        last_tick = self._snapshots[-1]
+
+        r_host = np.array([
+            [first_tick.host.x - last_tick.host.x],
+            [first_tick.host.y - last_tick.host.y],
+        ])
+
+        obj_first = first_tick.objects[str(obj.get_id())]
+        obj_last = last_tick.objects[str(obj.get_id())]
+
+        r_obj = np.array([
+            [obj_first.x - obj_last.x],
+            [obj_first.y - obj_last.y],
+        ])
+
+        # calculating angle between displacements
+        alpha = math.acos(
+            np.dot(r_host.T, r_obj) / (np.linalg.norm(r_host) * np.linalg.norm(r_obj))
+        )
+
+        d_yaw = abs(first_tick.host.yaw - last_tick.host.yaw)
+        dt = last_tick.time - first_tick.time
+        avg_yaw_rate = d_yaw / dt
+
+        # alpha < 45° means the host and the object is moving
+        # roughly in the same direction
+        if alpha < math.pi / 4:
+            events.append(f"CPNCO with {obj.get_id()}")
+
+        # we assume the host is turning if it has a yaw rate above 10°/s
+        elif avg_yaw_rate > 0.17:
+            events.append(f"CPLA with {obj.get_id()}")
+
+        # in every other case we fall back to CPTA
+        else:
+            events.append(f"CPTA with {obj.get_id()}")
 
 
 if __name__ == "__main__":

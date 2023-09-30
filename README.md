@@ -3,7 +3,7 @@
 Backend repository of our project, see the bottom of the page for the frontend.
 You can try our project without installing, by clicking on this link:
 
-https://codelikeabosch-2023-frontend.vercel.app/
+https://codelikeabosch-2023.vercel.app/
 
 If you are interested in our core logic, you can find it in `common/world.py`.
 

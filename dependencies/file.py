@@ -1,10 +1,23 @@
+"""
+CSV file parsing and normalization utilities.
+"""
+
 from fastapi import UploadFile, HTTPException, Depends
-from pydantic import BaseModel
 
 from typing import Annotated
+import csv
 
-from common.csv import parse_csv
 from common.world import RawObject, Tick
+
+
+def parse_csv(file_contents):
+    try:
+        decoded_file = file_contents.decode('utf-8').splitlines()
+        csv_reader = csv.reader(decoded_file)
+        data = [row for row in csv_reader]
+        return data
+    except Exception as e:
+        return None
 
 
 async def upload_file(
@@ -29,11 +42,10 @@ async def get_filename(
     return file.filename
 
 
+# converts raw data into a list of ticks
 async def parse_dataset(
     raw_data: Annotated[list[list[str]], Depends(upload_file)],
 ) -> list[Tick]:
-    # TODO: parse 2d str list into a list of ticks
-
     # create a dict with headers and indices
     headers = raw_data.pop(0)
     headers[0] = "_"

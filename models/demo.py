@@ -1,3 +1,7 @@
+"""
+Database model storing previously analyzed demos.
+"""
+
 from tortoise import fields, models
 
 

@@ -8,6 +8,7 @@ and collision events, and can be visualized using or frontend.
 """
 
 from common.filter import KalmanFilter
+from common.geometry import calculate_intersection
 
 from pydantic import BaseModel
 import numpy as np
@@ -287,7 +288,7 @@ class EnvObject(Object):
         return math.sqrt(self.vx() ** 2 + self.vy() ** 2)
     
     def yaw(self):
-        return math.atan2(self.x(), self.y())
+        return math.atan2(self.vy(), self.vx())
 
 
 class World:
@@ -356,7 +357,8 @@ class World:
         snapshot = self.snapshot(events)
         self._snapshots.append(snapshot)
 
-        self._detect_collisions(events)
+        self._detect_collisions(events) # 2nd task
+        self._predict_collisions(events) # 3rd task
 
         # debug
         if len(events) > 0:
@@ -496,7 +498,7 @@ class World:
         avg_yaw_rate = d_yaw / dt
 
         # we assume the host is turning if it has a yaw rate above 10°/s
-        if avg_yaw_rate > 0.17:
+        if avg_yaw_rate > 0.17: # in radian / s
             # CPTA = car to pedestrian turn adult
             events.append(f"CPTA with object #{obj.get_id()}")
 
@@ -510,6 +512,32 @@ class World:
         else:
             # CPNCO = car to pedestrian nearside child obstructed
             events.append(f"CPNCO with object #{obj.get_id()}")
+
+
+    def _predict_collisions(self, events: list[str]):
+        """host_pos = np.array([
+            [self._host.x()],
+            [self._host.y()],
+        ])
+
+        for obj in self._objects:
+            if obj.get_tracking_state() != TrackingState.active:
+                continue
+
+            obj_pos = np.array([
+                [obj.x()], 
+                [obj.y()],
+            ])
+
+            intersection, obj_time, host_time = calculate_intersection(
+                car_position = host_pos,
+                car_angle = self._host.yaw(),
+                car_velocity = self._host.v(),
+                car_yaw_rate = self._host.yaw_rate(),
+                pedestrian_position = obj_pos,
+                pedestrian_angle = obj.yaw(),
+                pedestrian_velocity = obj.v(),
+            )"""
 
 
     def get_time(self):

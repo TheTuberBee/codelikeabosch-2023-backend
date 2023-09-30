@@ -1,3 +1,7 @@
+"""
+Numpy implementation of Kalman Filter tailored for our needs.
+"""
+
 import numpy as np
 
 
@@ -21,6 +25,8 @@ class KalmanFilter:
         """
         F: state transition matrix 
             - translates state vector to an estimated state vector
+
+        Q: process noise covariance matrix
         """
 
         if Q is None:
@@ -94,6 +100,7 @@ class KalmanFilter:
         return np.eye(4)
 
 
+# playground
 if __name__ == "__main__":
     import time
 

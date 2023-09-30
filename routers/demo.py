@@ -1,4 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+"""
+API interface for uploading, analyzing and retrieving demos.
+"""
+
+from fastapi import APIRouter, Depends
 
 from typing import Annotated
 

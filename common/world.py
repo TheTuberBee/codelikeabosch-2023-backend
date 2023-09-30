@@ -245,7 +245,8 @@ class EnvObject(Object):
 
 class World:
     ASSOCIATION_DISTANCE_THRESHOLD = 2.5 # m
-    COLLISION_THRESHOLD = 0.8 # m from midpoint of frontal structure
+    COLLISION_THRESHOLD = 1.2 # m from midpoint of frontal structure
+    CAMERA_FRONT_DISTANCE = 3.2 # m
     COLLISION_BACKTRACK_TICKS = 20
 
     def __init__(self, tick: Tick):
@@ -302,7 +303,8 @@ class World:
 
         self._detect_collisions(events)
 
-        print(events)
+        if len(events) > 0:
+            print(self._tick, events)
 
 
     def get_object_meta(self):
@@ -399,8 +401,8 @@ class World:
     def _detect_collisions(self, events: list[str]):
         # estimating position of 50% width at frontal structure of host
         front_pos = np.array([
-            [self._host.x() + 2 * math.cos(self._host.yaw())], 
-            [self._host.y() + 2 * math.sin(self._host.yaw())]
+            [self._host.x() + World.CAMERA_FRONT_DISTANCE * math.cos(self._host.yaw())],
+            [self._host.y() + World.CAMERA_FRONT_DISTANCE * math.sin(self._host.yaw())],
         ])
 
         for obj in self._objects:
@@ -415,7 +417,7 @@ class World:
             # calculating distance between host and object
             distance = np.linalg.norm(front_pos - obj_pos)
 
-            if distance <= World.COLLISION_THRESHOLD:
+            if distance <= World.COLLISION_THRESHOLD and obj._color != Object.COLLIDER_COLOR:
                 obj.mark_as_collider()
                 self._classify_collision(obj, events)
 
@@ -452,18 +454,21 @@ class World:
         dt = last_tick.time - first_tick.time
         avg_yaw_rate = d_yaw / dt
 
-        # alpha < 45° means the host and the object is moving
-        # roughly in the same direction
-        if alpha < math.pi / 4:
-            events.append(f"CPNCO with {obj.get_id()}")
-
         # we assume the host is turning if it has a yaw rate above 10°/s
-        elif avg_yaw_rate > 0.17:
-            events.append(f"CPLA with {obj.get_id()}")
+        if avg_yaw_rate > 0.17:
+            # CPTA = car to pedestrian turn adult
+            events.append(f"CPTA with object #{obj.get_id()}")
 
-        # in every other case we fall back to CPTA
+        # alpha < 30° means the host and the object is moving
+        # roughly in the same direction
+        elif alpha < math.pi / 6:
+            # CPLA = car to pedestrian longitudinal adult
+            events.append(f"CPLA with object #{obj.get_id()}")
+
+        # in every other case we fall back to CPNCO
         else:
-            events.append(f"CPTA with {obj.get_id()}")
+            # CPNCO = car to pedestrian nearside child obstructed
+            events.append(f"CPNCO with object #{obj.get_id()}")
 
 
 if __name__ == "__main__":

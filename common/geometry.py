@@ -1,15 +1,17 @@
 import numpy as np
 
+from typing import Tuple
+
 def calculate_intersection(
-    car_position: np.ndarray, 
-    car_angle: float,
-    car_velocity: float, 
-    car_yaw_rate: float, 
-    pedestrian_position: np.ndarray, 
-    pedestrian_angle: float, 
-    pedestrian_velocity: float,
+    car_position: np.ndarray,           # 2 * 1, m
+    car_angle: float,                   # radians
+    car_velocity: float,                # m/s
+    car_yaw_rate: float,                # radians/s
+    pedestrian_position: np.ndarray,    # 2 * 1, m
+    pedestrian_angle: float,            # radians
+    pedestrian_velocity: float,         # m/s
 ):
-    epsilon: float = 1e-6  # Small value to avoid division by zero
+    epsilon = 1e-6  # Small value to avoid division by zero
 
     # Car trajectory parameters
     car_radius = car_velocity / car_yaw_rate
@@ -20,9 +22,9 @@ def calculate_intersection(
 
     # Calculate the intersection point
     relative_position = pedestrian_position - car_center
-    dot_product = np.dot(relative_position, pedestrian_direction)
+    dot_product = np.sum(relative_position * pedestrian_direction)  # Dot product
     intersection_point = car_center + dot_product * pedestrian_direction
-
+    
     # Calculate time to intersection for the pedestrian
     pedestrian_distance_to_intersection = np.linalg.norm(intersection_point - pedestrian_position)
     pedestrian_time_to_intersection = pedestrian_distance_to_intersection / pedestrian_velocity
@@ -31,4 +33,4 @@ def calculate_intersection(
     car_distance_to_intersection = np.linalg.norm(intersection_point - car_position)
     car_time_to_intersection = car_distance_to_intersection / car_velocity
 
-    return intersection_point, pedestrian_time_to_intersection, car_time_to_intersection
+    return intersection_point, pedestrian_time_to_intersection, car_time_to_intersection[0]
